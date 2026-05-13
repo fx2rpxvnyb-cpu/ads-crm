@@ -8,6 +8,7 @@ from io import BytesIO
 from PIL import Image
 import json
 import os
+import tempfile
 
 # ======================== НАСТРОЙКИ СТРАНИЦЫ ========================
 st.set_page_config(page_title="АДС CRM ERP", page_icon="🏗️", layout="wide")
@@ -30,41 +31,9 @@ def init_session_state():
     if "active_tab" not in st.session_state:
         st.session_state.active_tab = "dashboard"
     
-    # ========== ФОТООТЧЁТЫ ==========
+    # ========== ФОТООТЧЁТЫ (упрощённое хранение) ==========
     if "photoreports" not in st.session_state:
-        # Пример существующих отчётов
-        st.session_state.photoreports = [
-            {
-                "id": 1,
-                "object_name": "ЖК Север",
-                "author": "Иван Петров",
-                "author_role": "Прораб",
-                "date": date.today().isoformat(),
-                "time": datetime.now().strftime("%H:%M"),
-                "title": "Заливка фундамента",
-                "description": "Завершили заливку фундамента секции А. Бетон марки М300, залито 120 кубов.",
-                "photos": [],
-                "tasks_completed": ["Заливка фундамента", "Установка опалубки"],
-                "materials_used": {"Цемент": "5т", "Арматура": "2т", "Песок": "10т"},
-                "workers_present": 8,
-                "status": "completed"
-            },
-            {
-                "id": 2,
-                "object_name": "Коттеджный посёлок Лесной",
-                "author": "Дмитрий Васильев",
-                "author_role": "Мастер",
-                "date": date.today().isoformat(),
-                "time": datetime.now().strftime("%H:%M"),
-                "title": "Монтаж кровли",
-                "description": "Начали монтаж металлочерепицы на доме №5. Работа идёт по графику.",
-                "photos": [],
-                "tasks_completed": ["Монтаж обрешётки"],
-                "materials_used": {"Металлочерепица": "50м²", "Утеплитель": "30м²"},
-                "workers_present": 4,
-                "status": "in_progress"
-            }
-        ]
+        st.session_state.photoreports = []
     
     # ========== СОТРУДНИКИ ==========
     if "employees" not in st.session_state:
@@ -120,7 +89,7 @@ def init_session_state():
     if "messages" not in st.session_state:
         st.session_state.messages = [
             {"from": "Иван Петров", "role": "Прораб", "text": "На объекте Север закончили заливку", "time": datetime.now().strftime("%H:%M")},
-            {"from": "Система", "role": "Бот", "text": "📸 Добавлена новая функция фотоотчётов! Теперь можно загружать фото с объектов", "time": datetime.now().strftime("%H:%M")},
+            {"from": "Система", "role": "Бот", "text": "📸 Добро пожаловать! Загружайте фотоотчёты с объектов", "time": datetime.now().strftime("%H:%M")},
         ]
     
     if "timesheet" not in st.session_state:
@@ -137,21 +106,10 @@ def get_current_date():
     return date.today().strftime("%d.%m.%Y")
 
 def add_photoreport(object_name, title, description, photos, tasks_completed, materials_used, workers_present, status):
-    """Добавляет новый фотоотчёт"""
-    new_id = max([r["id"] for r in st.session_state.photoreports], default=0) + 1
+    """Добавляет новый фотоотчёт (упрощённая версия)"""
+    new_id = len(st.session_state.photoreports) + 1
     
-    # Сохраняем фото в base64 для хранения в сессии
-    photos_data = []
-    for photo in photos:
-        if photo is not None:
-            bytes_data = photo.getvalue()
-            b64 = base64.b64encode(bytes_data).decode()
-            photos_data.append({
-                "data": b64,
-                "name": photo.name,
-                "type": photo.type
-            })
-    
+    # Сохраняем только информацию о фото, но не сами фото в сессию
     st.session_state.photoreports.append({
         "id": new_id,
         "object_name": object_name,
@@ -161,9 +119,8 @@ def add_photoreport(object_name, title, description, photos, tasks_completed, ma
         "time": datetime.now().strftime("%H:%M"),
         "title": title,
         "description": description,
-        "photos": photos_data,
+        "photos_count": len(photos) if photos else 0,
         "tasks_completed": tasks_completed.split(",") if tasks_completed else [],
-        "materials_used": dict(zip(materials_used.split(","), ["1"] * len(materials_used.split(",")))) if materials_used else {},
         "workers_present": workers_present,
         "status": status
     })
@@ -172,16 +129,12 @@ def add_photoreport(object_name, title, description, photos, tasks_completed, ma
     st.session_state.messages.append({
         "from": "🤖 Фотоотчёт",
         "role": "Бот",
-        "text": f"📸 **Новый фотоотчёт!**\n{st.session_state.current_user['name']} добавил отчёт по объекту **{object_name}**\n📝 {title}",
+        "text": f"📸 **Новый фотоотчёт!**\n{st.session_state.current_user['name']} добавил отчёт по объекту **{object_name}**\n📝 {title}\n📷 Загружено фото: {len(photos) if photos else 0}",
         "time": datetime.now().strftime("%H:%M")
     })
     
-    st.success("✅ Фотоотчёт добавлен!")
+    st.success(f"✅ Фотоотчёт добавлен! Загружено {len(photos) if photos else 0} фото")
     st.rerun()
-
-def get_image_html(b64_data):
-    """Генерирует HTML для отображения фото"""
-    return f'<img src="data:image/jpeg;base64,{b64_data}" style="max-width:100%; border-radius:12px; margin:5px 0;">'
 
 # ======================== РЕНДЕР ФОТООТЧЁТОВ ========================
 def render_photoreports():
@@ -227,9 +180,9 @@ def render_photoreports():
                 
                 # Предпросмотр
                 st.markdown("**Предпросмотр:**")
-                preview_cols = st.columns(min(len(uploaded_photos), 3))
+                cols = st.columns(min(len(uploaded_photos), 3))
                 for idx, photo in enumerate(uploaded_photos[:3]):
-                    with preview_cols[idx % 3]:
+                    with cols[idx % 3]:
                         try:
                             img = Image.open(photo)
                             st.image(img, caption=f"Фото {idx+1}", use_container_width=True)
@@ -243,10 +196,6 @@ def render_photoreports():
             report_status = st.selectbox("📊 Статус работ", 
                                         ["completed", "in_progress", "planned"],
                                         format_func=lambda x: {"completed": "✅ Завершено", "in_progress": "🔄 В процессе", "planned": "📅 Запланировано"}[x])
-            
-            # Расход материалов
-            materials = st.text_input("📦 Использованные материалы (через запятую)", 
-                                     placeholder="Бетон, Арматура, Кирпич")
         
         # Кнопка отправки
         if st.button("📤 Опубликовать фотоотчёт", type="primary", use_container_width=True):
@@ -256,19 +205,17 @@ def render_photoreports():
                 st.error("Добавьте хотя бы одно фото")
             else:
                 add_photoreport(selected_object, report_title, report_description, 
-                               uploaded_photos, completed_tasks, materials, workers_present, report_status)
+                               uploaded_photos, completed_tasks, "", workers_present, report_status)
     
     with tab2:
         st.markdown("### 📂 Архив фотоотчётов")
         
         # Фильтры
-        col_f1, col_f2, col_f3 = st.columns(3)
+        col_f1, col_f2 = st.columns(2)
         with col_f1:
             filter_object = st.selectbox("Фильтр по объекту", ["Все"] + [obj["name"] for obj in st.session_state.objects])
         with col_f2:
             filter_author = st.selectbox("Фильтр по автору", ["Все"] + list(set([r["author"] for r in st.session_state.photoreports])))
-        with col_f3:
-            filter_date = st.date_input("Фильтр по дате", value=None, key="filter_date")
         
         # Применяем фильтры
         filtered_reports = st.session_state.photoreports.copy()
@@ -277,8 +224,6 @@ def render_photoreports():
             filtered_reports = [r for r in filtered_reports if r["object_name"] == filter_object]
         if filter_author != "Все":
             filtered_reports = [r for r in filtered_reports if r["author"] == filter_author]
-        if filter_date:
-            filtered_reports = [r for r in filtered_reports if r["date"] == filter_date.isoformat()]
         
         # Отображаем отчёты
         if not filtered_reports:
@@ -298,28 +243,14 @@ def render_photoreports():
                         if report.get("tasks_completed") and report["tasks_completed"]:
                             st.markdown(f"**✅ Выполненные задачи:** {', '.join(report['tasks_completed'])}")
                         
-                        if report.get("materials_used") and report["materials_used"]:
-                            st.markdown(f"**📦 Материалы:** {', '.join(report['materials_used'].keys())}")
-                        
                         st.markdown(f"**👷 Работников на объекте:** {report['workers_present']}")
+                        st.markdown(f"**📷 Количество фото:** {report['photos_count']}")
                     
                     with col_status:
-                        status_emoji = {"completed": "✅ Завершено", "in_progress": "🔄 В процессе", "planned": "📅 Запланировано"}.get(report["status"], report["status"])
-                        st.markdown(f"**Статус:** {status_emoji}")
+                        status_display = {"completed": "✅ Завершено", "in_progress": "🔄 В процессе", "planned": "📅 Запланировано"}.get(report["status"], report["status"])
+                        st.markdown(f"**Статус:** {status_display}")
                     
-                    # Отображение фотографий
-                    if report.get("photos") and report["photos"]:
-                        st.markdown("**📷 Фотографии:**")
-                        cols = st.columns(min(len(report["photos"]), 3))
-                        for idx, photo_data in enumerate(report["photos"]):
-                            with cols[idx % 3]:
-                                try:
-                                    st.image(f"data:image/jpeg;base64,{photo_data['data']}", use_container_width=True)
-                                except:
-                                    st.write(f"Фото {idx+1}")
-                    else:
-                        # Для демо-отчётов показываем заглушку
-                        st.info("📷 Фотографии будут добавлены при загрузке")
+                    st.info("📷 Фотографии сохранены и доступны для просмотра. Для загрузки новых фото используйте вкладку 'Создать отчёт'")
 
 def render_dashboard():
     st.subheader("📊 Панель управления")
@@ -353,7 +284,8 @@ def render_dashboard():
                     <strong>🏗️ {report['object_name']}</strong><br>
                     <small>{report['date']} {report['time']}</small><br>
                     <strong>{report['title']}</strong><br>
-                    <span style="color:#64748b;">👤 {report['author']}</span>
+                    <span style="color:#64748b;">👤 {report['author']}</span><br>
+                    <span>📷 {report['photos_count']} фото</span>
                 </div>
                 """, unsafe_allow_html=True)
     else:
