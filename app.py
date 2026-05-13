@@ -4,266 +4,262 @@ from datetime import datetime, date
 import pytz
 import random
 
-# ======================== НАСТРОЙКИ СТРАНИЦЫ ========================
-st.set_page_config(page_title="АДС CRM ERP", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="АДС CRM Enterprise", page_icon="🏗️", layout="wide")
 
-# ======================== ДАННЫЕ И РОЛИ ========================
-ROLES = {
-    "admin": {"name": "Администратор", "icon": "👑", "access": ["dashboard", "employees", "shifts", "timesheet", "tasks", "messenger", "admin"]},
-    "director": {"name": "Директор", "icon": "💼", "access": ["dashboard", "employees", "shifts", "timesheet", "tasks", "messenger"]},
-    "foreman": {"name": "Прораб", "icon": "🏗️", "access": ["dashboard", "shifts", "timesheet", "tasks", "messenger"]},
-    "master": {"name": "Мастер", "icon": "🔨", "access": ["dashboard", "shifts", "timesheet", "tasks", "messenger"]},
-    "supply": {"name": "Снабженец", "icon": "📦", "access": ["dashboard", "tasks", "messenger"]}
+# ================= CUSTOM CSS =================
+st.markdown("""
+<style>
+.main {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+}
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+    color: white;
+}
+section[data-testid="stSidebar"] * {
+    color: white !important;
+}
+.stButton > button {
+    width: 100%;
+    border-radius: 12px;
+    border: none;
+    padding: 0.75rem;
+    font-weight: 600;
+}
+.metric-card {
+    background: white;
+    padding: 20px;
+    border-radius: 18px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    text-align: center;
+}
+.chat-box {
+    background: white;
+    padding: 12px;
+    border-radius: 12px;
+    margin-bottom: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+</style>
+""", unsafe_allow_html=True)
+
+USERS = {
+    "admin": {"password": "admin123", "name": "Алексей Админов", "role": "admin"},
+    "director": {"password": "director123", "name": "Директор АДС", "role": "director"},
+    "foreman": {"password": "foreman123", "name": "Иван Петров", "role": "foreman"},
+    "master": {"password": "master123", "name": "Дмитрий Васильев", "role": "master"},
+    "supply": {"password": "supply123", "name": "Снабжение АДС", "role": "supply"}
 }
 
-# ======================== ИНИЦИАЛИЗАЦИЯ STATE ========================
-def init_session_state():
+ROLES = {
+    "admin": {"name": "Администратор", "icon": "👑"},
+    "director": {"name": "Директор", "icon": "💼"},
+    "foreman": {"name": "Прораб", "icon": "🏗️"},
+    "master": {"name": "Мастер", "icon": "🔨"},
+    "supply": {"name": "Снабженец", "icon": "📦"}
+}
+
+def init_state():
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
     if "current_user" not in st.session_state:
-        st.session_state.current_user = {"name": "Алексей Админов", "role": "admin"}
+        st.session_state.current_user = None
     if "active_tab" not in st.session_state:
         st.session_state.active_tab = "dashboard"
-
     if "employees" not in st.session_state:
         st.session_state.employees = [
-            {"id": 1, "name": "Иван Петров", "position": "Прораб", "status": "present", "current_object": "ЖК Север", "avatar": "👷"},
-            {"id": 2, "name": "Сергей Кузнецов", "position": "Электрик", "status": "present", "current_object": "ЖК Север", "avatar": "⚡"},
-            {"id": 3, "name": "Дмитрий Васильев", "position": "Мастер", "status": "present", "current_object": "Лесной", "avatar": "🔨"},
-            {"id": 4, "name": "Андрей Соколов", "position": "Разнорабочий", "status": "absent", "current_object": None, "avatar": "🪣"},
+            {"id": 1, "name": "Иван Петров", "position": "Прораб", "status": "На работе", "object": "ЖК Север"},
+            {"id": 2, "name": "Сергей Кузнецов", "position": "Электрик", "status": "На работе", "object": "ЖК Север"},
+            {"id": 3, "name": "Дмитрий Васильев", "position": "Мастер", "status": "Выходной", "object": "—"},
         ]
-
-    if "objects" not in st.session_state:
-        st.session_state.objects = [
-            {"id": 1, "name": "ЖК Север", "foreman": "Иван Петров"},
-            {"id": 2, "name": "Коттеджный посёлок Лесной", "foreman": "Иван Петров"},
-            {"id": 3, "name": "ТЦ Молл Парк", "foreman": "Дмитрий Васильев"},
-        ]
-
-    if "site_attendance" not in st.session_state:
-        st.session_state.site_attendance = []
-
     if "tasks" not in st.session_state:
         st.session_state.tasks = [
-            {"id": 1, "title": "Залить фундамент", "assigned_to": "Иван Петров", "assigned_by": "Админ", "priority": "high", "status": "in_progress", "due_date": "2026-05-20"},
-            {"id": 2, "title": "Проверить проводку", "assigned_to": "Сергей Кузнецов", "assigned_by": "Иван Петров", "priority": "medium", "status": "pending", "due_date": "2026-05-18"},
+            {"title": "Фундамент", "assigned": "Иван Петров", "priority": "Высокий", "deadline": "2026-05-20", "status": "В работе"}
         ]
-
     if "messages" not in st.session_state:
         st.session_state.messages = [
-            {"from": "Иван Петров", "text": "На объекте Север закончили заливку", "time": datetime.now().strftime("%H:%M")},
+            {"from": "Директор", "text": "Проверить объект Север", "time": "09:00"}
         ]
 
-# ======================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ========================
-def get_moscow_time():
+def moscow_time():
     return datetime.now(pytz.timezone("Europe/Moscow")).strftime("%H:%M:%S")
 
-def get_current_date():
-    return date.today().strftime("%d.%m.%Y")
+def ufa_time():
+    return datetime.now(pytz.timezone("Asia/Yekaterinburg")).strftime("%H:%M:%S")
 
-def add_employee(name, position):
-    new_id = max([e["id"] for e in st.session_state.employees], default=0) + 1
-    st.session_state.employees.append({
-        "id": new_id,
-        "name": name,
-        "position": position,
-        "status": "present",
-        "current_object": None,
-        "avatar": "👷"
-    })
-
-def add_task(title, assigned_to, due_date, priority):
-    new_id = max([t["id"] for t in st.session_state.tasks], default=0) + 1
-    st.session_state.tasks.append({
-        "id": new_id,
-        "title": title,
-        "assigned_to": assigned_to,
-        "assigned_by": st.session_state.current_user["name"],
-        "priority": priority,
-        "status": "pending",
-        "due_date": str(due_date)
-    })
-
-def toggle_status(emp_id):
-    for emp in st.session_state.employees:
-        if emp["id"] == emp_id:
-            emp["status"] = "absent" if emp["status"] == "present" else "present"
-            break
-
-# ======================== ВКЛАДКИ ========================
-def render_dashboard():
-    st.subheader("📊 Панель управления")
-
+def dashboard():
+    st.subheader("📊 Центральная панель")
     col1, col2, col3, col4 = st.columns(4)
-    present_count = len([e for e in st.session_state.employees if e["status"] == "present"])
-    active_objects = len(set([e["current_object"] for e in st.session_state.employees if e["current_object"]]))
-    pending_tasks = len([t for t in st.session_state.tasks if t["status"] != "done"])
+    col1.metric("👷 Сотрудники", len(st.session_state.employees))
+    col2.metric("🏗️ Объекты", len(set([e['object'] for e in st.session_state.employees if e['object'] != '—'])))
+    col3.metric("📋 Задачи", len(st.session_state.tasks))
+    col4.metric("💬 Сообщения", len(st.session_state.messages))
 
-    col1.metric("👷 На работе", present_count, f"из {len(st.session_state.employees)}")
-    col2.metric("🏗️ Активных объектов", active_objects)
-    col3.metric("📋 Активных задач", pending_tasks)
-    col4.metric("👥 Сотрудников", len(st.session_state.employees))
+    st.markdown("### 📍 Персонал по объектам")
+    df = pd.DataFrame(st.session_state.employees)
+    st.dataframe(df, use_container_width=True, hide_index=True)
 
-def render_employees():
-    st.subheader("👥 Сотрудники")
-
+def employees_page():
+    st.subheader("👥 Управление сотрудниками")
     with st.expander("➕ Добавить сотрудника"):
         name = st.text_input("ФИО")
         position = st.text_input("Должность")
-        if st.button("Добавить сотрудника") and name:
-            add_employee(name, position)
-            st.rerun()
-
-    for emp in st.session_state.employees:
-        col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-        col1.write(f"{emp['avatar']} **{emp['name']}**")
-        col2.write(emp['position'])
-        col3.write("✅ На работе" if emp['status'] == 'present' else "❌ Отсутствует")
-        if col4.button("Сменить статус", key=f"emp_{emp['id']}"):
-            toggle_status(emp['id'])
-            st.rerun()
-        st.divider()
-
-def render_shifts():
-    st.subheader("🔨 Смены")
-    object_names = [obj['name'] for obj in st.session_state.objects]
-    selected_object = st.selectbox("Объект", object_names)
-
-    available = [e for e in st.session_state.employees if e['status'] == 'present']
-    if available:
-        selected_emp = st.selectbox(
-            "Сотрудник",
-            available,
-            format_func=lambda e: f"{e['name']} ({e['position']})"
-        )
-        if st.button("Отметить на объекте"):
-            st.session_state.site_attendance.append({
-                "id": random.randint(1000, 9999),
-                "employee_id": selected_emp['id'],
-                "employee_name": selected_emp['name'],
-                "object_name": selected_object,
-                "date": date.today().isoformat(),
-                "check_in": datetime.now().strftime("%H:%M"),
-                "check_out": None,
+        if st.button("Добавить") and name:
+            st.session_state.employees.append({
+                "id": random.randint(100,999),
+                "name": name,
+                "position": position,
+                "status": "На работе",
+                "object": "—"
             })
-            selected_emp['current_object'] = selected_object
-            st.success("Сотрудник отмечен")
+            st.success("Сотрудник добавлен")
             st.rerun()
+    st.dataframe(pd.DataFrame(st.session_state.employees), use_container_width=True, hide_index=True)
 
-def render_timesheet():
-    st.subheader("📊 Табель")
-    data = []
-    for emp in st.session_state.employees:
-        visits = [a for a in st.session_state.site_attendance if a['employee_id'] == emp['id']]
-        data.append({
-            "Сотрудник": emp['name'],
-            "Должность": emp['position'],
-            "Объект": emp['current_object'] or "—",
-            "Выходов": len(visits),
-            "Статус": emp['status']
-        })
-    st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
-
-def render_tasks():
-    st.subheader("📋 Задачи")
-
-    with st.expander("➕ Новая задача"):
+def tasks_page():
+    st.subheader("📋 Управление задачами")
+    with st.expander("➕ Создать задачу"):
         title = st.text_input("Название задачи")
-        assigned_to = st.selectbox("Исполнитель", [e['name'] for e in st.session_state.employees])
-        due = st.date_input("Срок")
-        priority = st.selectbox("Приоритет", ["high", "medium", "low"])
-        if st.button("Создать задачу") and title:
-            add_task(title, assigned_to, due, priority)
+        assigned = st.selectbox("Исполнитель", [e['name'] for e in st.session_state.employees])
+        deadline = st.date_input("Дедлайн")
+        priority = st.selectbox("Приоритет", ["Высокий", "Средний", "Низкий"])
+        if st.button("Создать") and title:
+            st.session_state.tasks.append({
+                "title": title,
+                "assigned": assigned,
+                "priority": priority,
+                "deadline": str(deadline),
+                "status": "Новая"
+            })
+            st.success("Задача создана")
             st.rerun()
 
     for task in st.session_state.tasks:
-        st.write(f"**{task['title']}** | 👤 {task['assigned_to']} | 📅 {task['due_date']} | Статус: {task['status']}")
+        st.markdown(f"""
+        <div class='chat-box'>
+        <b>{task['title']}</b><br>
+        👤 {task['assigned']} | 📅 {task['deadline']}<br>
+        🔥 {task['priority']} | 📌 {task['status']}
+        </div>
+        """, unsafe_allow_html=True)
 
-def render_messenger():
-    st.subheader("💬 Чат")
-
+def messenger_page():
+    st.subheader("💬 Корпоративный мессенджер")
     for msg in st.session_state.messages:
-        st.markdown(f"**{msg['from']}** ({msg['time']}): {msg['text']}")
+        st.markdown(f"""
+        <div class='chat-box'>
+        <b>{msg['from']}</b> ({msg['time']})<br>{msg['text']}
+        </div>
+        """, unsafe_allow_html=True)
 
     new_msg = st.text_input("Введите сообщение")
     if st.button("Отправить") and new_msg:
         st.session_state.messages.append({
             "from": st.session_state.current_user['name'],
             "text": new_msg,
-            "time": datetime.now().strftime("%H:%M")
+            "time": datetime.now().strftime('%H:%M')
         })
         st.rerun()
 
-def render_admin():
+def admin_page():
     st.subheader("⚙️ Администрирование")
-    new_role = st.selectbox(
-        "Сменить роль",
-        list(ROLES.keys()),
-        format_func=lambda x: f"{ROLES[x]['icon']} {ROLES[x]['name']}"
-    )
-    if st.button("Применить роль"):
-        st.session_state.current_user['role'] = new_role
+
+    st.markdown("### 👤 Редактирование профиля")
+    new_name = st.text_input("Изменить имя пользователя", value=st.session_state.current_user['name'])
+    if st.button("💾 Сохранить имя"):
+        st.session_state.current_user['name'] = new_name
+        username = st.session_state.current_user.get('username')
+        if username in USERS:
+            USERS[username]['name'] = new_name
+        st.success("Имя обновлено")
         st.rerun()
 
-# ======================== ОСНОВНОЙ ИНТЕРФЕЙС ========================
+    st.divider()
+
+    role = st.selectbox("Сменить роль", list(ROLES.keys()), format_func=lambda x: f"{ROLES[x]['icon']} {ROLES[x]['name']}")
+    if st.button("Применить"):
+        st.session_state.current_user['role'] = role
+        st.success("Роль обновлена")
+        st.rerun()
+
+def login_page():
+    st.title("🔐 Вход в АДС CRM")
+    st.subheader("Авторизация сотрудников")
+    username = st.text_input("Логин")
+    password = st.text_input("Пароль", type="password")
+
+    if st.button("Войти"):
+        user = USERS.get(username)
+        if user and user["password"] == password:
+            st.session_state.authenticated = True
+            st.session_state.current_user = {
+                "name": user["name"],
+                "role": user["role"],
+                "username": username
+            }
+            st.success("Успешный вход")
+            st.rerun()
+        else:
+            st.error("Неверный логин или пароль")
+
+    st.info("Тестовые аккаунты: admin / admin123")
+    st.caption("После входа имя пользователя можно изменить в разделе Администрирование")
+
+
+def logout():
+    st.session_state.authenticated = False
+    st.session_state.current_user = None
+    st.rerun()
+
+
 def main():
-    init_session_state()
+    init_state()
+
+    if not st.session_state.authenticated:
+        login_page()
+        return
 
     with st.sidebar:
-        st.title("🏗️ АДС CRM")
-        st.caption("Управление строительством")
+        st.markdown("# 🏗️ АДС")
+        st.caption("Enterprise CRM ERP")
         st.divider()
 
-        user_role = st.session_state.current_user['role']
-        tabs = [
-            ("dashboard", "📊 Панель"),
-            ("employees", "👥 Сотрудники"),
-            ("shifts", "🔨 Смены"),
-            ("timesheet", "📊 Табель"),
-            ("tasks", "📋 Задачи"),
-            ("messenger", "💬 Чат"),
-            ("admin", "⚙️ Админ"),
-        ]
+        menu = {
+            "dashboard": "📊 Панель",
+            "employees": "👥 Сотрудники",
+            "tasks": "📋 Задачи",
+            "messenger": "💬 Чат",
+            "admin": "⚙️ Админ"
+        }
 
-        for tab_id, label in tabs:
-            if tab_id in ROLES[user_role]['access']:
-                if st.button(label, use_container_width=True):
-                    st.session_state.active_tab = tab_id
-                    st.rerun()
+        for key, label in menu.items():
+            if st.button(label):
+                st.session_state.active_tab = key
+                st.rerun()
 
         st.divider()
-        st.write(f"👤 {st.session_state.current_user['name']}")
-        st.write(f"{ROLES[user_role]['icon']} {ROLES[user_role]['name']}")
+        user = st.session_state.current_user
+        st.markdown(f"**{user['name']}**")
+        st.markdown(f"{ROLES[user['role']]['icon']} {ROLES[user['role']]['name']}")
+        if st.button("🚪 Выйти"):
+            logout()
 
-    page_titles = {
-        "dashboard": "📊 Панель",
-        "employees": "👥 Сотрудники",
-        "shifts": "🔨 Смены",
-        "timesheet": "📊 Табель",
-        "tasks": "📋 Задачи",
-        "messenger": "💬 Чат",
-        "admin": "⚙️ Админ",
-    }
+    header1, header2 = st.columns([3, 1])
+    header1.title("АДС CRM Enterprise")
+    header2.markdown(f"**Москва:** {moscow_time()}  \\n**Уфа:** {ufa_time()}")
 
-    header_col1, header_col2 = st.columns([3, 1])
-    header_col1.title(page_titles.get(st.session_state.active_tab, "АДС CRM"))
-    header_col2.markdown(
-        f"**📅 {get_current_date()}**  \\n**🕒 Москва: {get_moscow_time()}**"
-    )
-
-    active_tab = st.session_state.active_tab
-    if active_tab == "dashboard":
-        render_dashboard()
-    elif active_tab == "employees":
-        render_employees()
-    elif active_tab == "shifts":
-        render_shifts()
-    elif active_tab == "timesheet":
-        render_timesheet()
-    elif active_tab == "tasks":
-        render_tasks()
-    elif active_tab == "messenger":
-        render_messenger()
-    elif active_tab == "admin":
-        render_admin()
+    tab = st.session_state.active_tab
+    if tab == "dashboard":
+        dashboard()
+    elif tab == "employees":
+        employees_page()
+    elif tab == "tasks":
+        tasks_page()
+    elif tab == "messenger":
+        messenger_page()
+    elif tab == "admin":
+        admin_page()
 
 if __name__ == "__main__":
     main()
+
